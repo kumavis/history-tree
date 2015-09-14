@@ -9,7 +9,7 @@ util.inherits(HistoryTree, AsyncEventEmitter)
 
 function HistoryTree() {
   AsyncEventEmitter.call(this)
-  this._children = []
+  this._stack = []
 }
 
 // public
@@ -18,14 +18,14 @@ function HistoryTree() {
 HistoryTree.prototype.checkpoint = function(){
   var self = this
   var newChild = new HistoryTree()
-  self._children.push(newChild)
+  self._stack.push(newChild)
   return newChild
 }
 
 // commit one child checkpoint
 HistoryTree.prototype.commit = function(cb){
   var self = this
-  var currentCheckpoint = self._children.pop()
+  var currentCheckpoint = self._stack.pop()
   if (currentCheckpoint) {
     async.series([
       // fully commit child checkpoint
@@ -41,7 +41,7 @@ HistoryTree.prototype.commit = function(cb){
 // revert one child checkpoint
 HistoryTree.prototype.revert = function(cb){
   var self = this
-  var currentCheckpoint = self._children.pop()
+  var currentCheckpoint = self._stack.pop()
   if (currentCheckpoint) {
     async.series([
       // fully revert child checkpoint
@@ -57,8 +57,7 @@ HistoryTree.prototype.revert = function(cb){
 // commit all child checkpoints
 HistoryTree.prototype.commitAll = function(cb){
   var self = this
-  var self = this
-  async.eachSeries(self._children, function(child, cb){
+  async.eachSeries(self._stack, function(child, cb){
     self.commit(cb)
   }, cb)
 }
@@ -66,8 +65,7 @@ HistoryTree.prototype.commitAll = function(cb){
 // revert all child checkpoints
 HistoryTree.prototype.revertAll = function(cb){
   var self = this
-  var self = this
-  async.eachSeries(self._children, function(child, cb){
+  async.eachSeries(self._stack, function(child, cb){
     self.revert(cb)
   }, cb)
 }
@@ -86,7 +84,7 @@ HistoryTree.prototype._emitEventsFor = function(event, data, cb){
 // check for remaining child checkpoints, if none emit 'resolve'
 HistoryTree.prototype._checkIfResolved = function(cb){
   var self = this
-  if (self._children.length === 0) {
+  if (self._stack.length === 0) {
     self.emit('resolve', null, cb)
   } else {
     cb
