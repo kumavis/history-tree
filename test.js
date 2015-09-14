@@ -32,8 +32,8 @@ test('nested commit', function(t){
 
   var firstToReport = null
 
-  parent.on('resolved', function(){ if (!firstToReport) firstToReport = parent })
-  child.on('resolved',  function(){ if (!firstToReport) firstToReport = child })
+  parent.on('resolve', function(){ if (!firstToReport) firstToReport = parent })
+  child.on('resolve',  function(){ if (!firstToReport) firstToReport = child })
 
   async.series([
     parent.commit.bind(parent),
@@ -74,6 +74,34 @@ test('child revert, parent commit', function(t){
 
 })
 
+test('commits wait for callbacks', function(t){
+  t.plan(1)
+
+  var history = new HistoryTree()
+  history.checkpoint()
+
+  var events = []
+  // commit late
+  history.on('commit', function(event, cb){
+    setImmediate(function(){
+      events.push('commit')
+      cb()
+    })
+  })
+  // resolve immediately
+  history.on('resolve', function(){
+    events.push('resolve')
+  })
+
+  async.series([
+    history.commit.bind(history),
+  ], function(){
+    t.equal(events.join(','), 'commit,resolve', 'correct order of events'),
+    t.end()
+  })
+
+})
+
 function trackHistory(history){
   var tracker = {
     didCommit: 0,
@@ -82,6 +110,6 @@ function trackHistory(history){
   }
   history.on('commit', function(){ tracker.didCommit++ })
   history.on('revert', function(){ tracker.didRevert++ })
-  history.on('resolved', function(){ tracker.didResolve++ })
+  history.on('resolve', function(){ tracker.didResolve++ })
   return tracker
 }
