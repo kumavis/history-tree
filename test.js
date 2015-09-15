@@ -13,10 +13,10 @@ test('flat commit', function(t){
   async.series([
     history.commit.bind(history),
   ], function(){
-    t.equal(tracker.commit, 0, 'committed correct number of times')
-    t.equal(tracker.childCommit, 1, 'child committed correct number of times')
+    t.equal(tracker.accepted, 0, 'accepted correct number of times')
+    t.equal(tracker.commit, 1, 'committed correct number of times')
+    t.equal(tracker.rejected, 0, 'rejected correct number of times')
     t.equal(tracker.revert, 0, 'reverted correct number of times')
-    t.equal(tracker.childRevert, 0, 'child reverted correct number of times')
     t.end()
   })
 
@@ -33,10 +33,10 @@ test('partial resolve', function(t){
   async.series([
     history.commit.bind(history),
   ], function(){
-    t.equal(tracker.commit, 0, 'committed correct number of times')
-    t.equal(tracker.childCommit, 1, 'child committed correct number of times')
+    t.equal(tracker.accepted, 0, 'accepted correct number of times')
+    t.equal(tracker.commit, 1, 'committed correct number of times')
+    t.equal(tracker.rejected, 0, 'rejected correct number of times')
     t.equal(tracker.revert, 0, 'reverted correct number of times')
-    t.equal(tracker.childRevert, 0, 'child reverted correct number of times')
     t.end()
   })
 
@@ -56,14 +56,14 @@ test('nested commit', function(t){
   async.series([
     parent.commit.bind(parent),
   ], function(){
+    t.equal(childTracker.accepted, 1, 'child - accepted correct number of times')
     t.equal(childTracker.commit, 1, 'child - committed correct number of times')
-    t.equal(childTracker.childCommit, 1, 'child - child committed correct number of times')
+    t.equal(childTracker.rejected, 0, 'child - rejected correct number of times')
     t.equal(childTracker.revert, 0, 'child - reverted correct number of times')
-    t.equal(childTracker.childRevert, 0, 'child - child reverted correct number of times')
-    t.equal(parentTracker.commit, 0, 'parent - committed correct number of times')
-    t.equal(parentTracker.childCommit, 1, 'parent - child committed correct number of times')
+    t.equal(parentTracker.accepted, 0, 'parent - accepted correct number of times')
+    t.equal(parentTracker.commit, 1, 'parent - committed correct number of times')
+    t.equal(parentTracker.rejected, 0, 'parent - rejected correct number of times')
     t.equal(parentTracker.revert, 0, 'parent - reverted correct number of times')
-    t.equal(parentTracker.childRevert, 0, 'parent - child reverted correct number of times')
     t.end()
   })
 
@@ -82,20 +82,20 @@ test('child revert, parent commit', function(t){
     child.revert.bind(child),
     parent.commit.bind(parent),
   ], function(){
-    t.equal(childTracker.commit, 1, 'child - committed correct number of times')
-    t.equal(childTracker.childCommit, 0, 'child - child committed correct number of times')
-    t.equal(childTracker.revert, 0, 'child - reverted correct number of times')
-    t.equal(childTracker.childRevert, 1, 'child - child reverted correct number of times')
-    t.equal(parentTracker.commit, 0, 'parent - committed correct number of times')
-    t.equal(parentTracker.childCommit, 1, 'parent - child committed correct number of times')
+    t.equal(childTracker.accepted, 1, 'child - accepted correct number of times')
+    t.equal(childTracker.commit, 0, 'child - committed correct number of times')
+    t.equal(childTracker.rejected, 0, 'child - rejected correct number of times')
+    t.equal(childTracker.revert, 1, 'child - reverted correct number of times')
+    t.equal(parentTracker.accepted, 0, 'parent - accepted correct number of times')
+    t.equal(parentTracker.commit, 1, 'parent - committed correct number of times')
+    t.equal(parentTracker.rejected, 0, 'parent - rejected correct number of times')
     t.equal(parentTracker.revert, 0, 'parent - reverted correct number of times')
-    t.equal(parentTracker.childRevert, 0, 'parent - child reverted correct number of times')
     t.end()
   })
 
 })
 
-test('commitAll runs in correct order', function(t){
+test('accept runs in correct order', function(t){
   t.plan(1)
 
   var parent = new HistoryTree()
@@ -107,17 +107,18 @@ test('commitAll runs in correct order', function(t){
   var childB2 = childB.checkpoint()
 
   var events = []
-  childA.on('commit', function(){ events.push('A') })
-  childA1.on('commit', function(){ events.push('A1') })
-  childA2.on('commit', function(){ events.push('A2') })
-  childB.on('commit', function(){ events.push('B') })
-  childB1.on('commit', function(){ events.push('B1') })
-  childB2.on('commit', function(){ events.push('B2') })
+  parent.on('accepted', function(){ events.push('P') })
+  childA.on('accepted', function(){ events.push('A') })
+  childA1.on('accepted', function(){ events.push('A1') })
+  childA2.on('accepted', function(){ events.push('A2') })
+  childB.on('accepted', function(){ events.push('B') })
+  childB1.on('accepted', function(){ events.push('B1') })
+  childB2.on('accepted', function(){ events.push('B2') })
 
   async.series([
-    parent.commitAll.bind(parent),
+    parent.accept.bind(parent),
   ], function(){
-    t.equal(events.join(','), 'B2,B1,B,A2,A1,A', 'correct order of events'),
+    t.equal(events.join(','), 'B2,B1,B,A2,A1,A,P', 'correct order of events'),
     t.end()
   })
 
@@ -125,15 +126,14 @@ test('commitAll runs in correct order', function(t){
 
 function trackHistory(history){
   var tracker = {
-    commit:       0,
-    childCommit:  0,
-    revert:       0,
-    childRevert:  0,
-    resolve:      0,
+    accepted:       0,
+    commit:  0,
+    rejected:       0,
+    revert:  0,
   }
-  history.on('commit',       function(){ tracker.commit++       })
-  history.on('childCommit',  function(){ tracker.childCommit++  })
-  history.on('revert',       function(){ tracker.revert++       })
-  history.on('childRevert',  function(){ tracker.childRevert++  })
+  history.on('accepted',       function(){ tracker.accepted++       })
+  history.on('commit',  function(){ tracker.commit++  })
+  history.on('rejected',       function(){ tracker.rejected++       })
+  history.on('revert',  function(){ tracker.revert++  })
   return tracker
 }

@@ -20,8 +20,8 @@ HistoryTree.prototype.checkpoint = function(){
   var newChild = new HistoryTree()
   self._stack.push(newChild)
   // re-emit child's events
-  newChild.on('commit', function(){ self.emit('childCommit', newChild) })
-  newChild.on('revert', function(){ self.emit('childRevert', newChild) })
+  newChild.on('accepted', function(){ self.emit('commit', newChild) })
+  newChild.on('rejected', function(){ self.emit('revert', newChild) })
   return newChild
 }
 
@@ -38,7 +38,7 @@ HistoryTree.prototype.commit = function(cb){
   var currentCheckpoint = self._stack.pop()
   if (currentCheckpoint) {
     // fully commit child checkpoint
-    currentCheckpoint.commitAll(cb)
+    currentCheckpoint.accept(cb)
   } else {
     cb(new Error('Committed without a checkpoint.'))
   }
@@ -50,36 +50,36 @@ HistoryTree.prototype.revert = function(cb){
   var currentCheckpoint = self._stack.pop()
   if (currentCheckpoint) {
     // fully revert child checkpoint
-    currentCheckpoint.revertAll(cb)
+    currentCheckpoint.reject(cb)
   } else {
     cb(new Error('Reverted without a checkpoint.'))
   }
 }
 
 // commit all child checkpoints
-HistoryTree.prototype.commitAll = function(cb){
+HistoryTree.prototype.accept = function(cb){
   var self = this
   
-  var commitAll = function(cb){
+  var commitChildren = function(cb){
     async.eachSeries(self._stack, function(child, cb){ self.commit(cb) }, cb)
   }
 
   async.series([
-    commitAll,
-    self.emit.bind(self, 'commit', undefined),
+    commitChildren,
+    self.emit.bind(self, 'accepted', undefined),
   ], cb)
 }
 
 // revert all child checkpoints
-HistoryTree.prototype.revertAll = function(cb){
+HistoryTree.prototype.reject = function(cb){
   var self = this
   
-  var revertAll = function(cb){
+  var revertChildren = function(cb){
     async.eachSeries(self._stack, function(child, cb){ self.revert(cb) }, cb)
   }
 
   async.series([
-    revertAll,
-    self.emit.bind(self, 'revert', undefined),
+    revertChildren,
+    self.emit.bind(self, 'rejected', undefined),
   ], cb)
 }
