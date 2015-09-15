@@ -19,7 +19,17 @@ HistoryTree.prototype.checkpoint = function(){
   var self = this
   var newChild = new HistoryTree()
   self._stack.push(newChild)
+  // re-emit child's events
+  newChild.on('commit', function(){ self.emit('childCommit', newChild) })
+  newChild.on('revert', function(){ self.emit('childRevert', newChild) })
   return newChild
+}
+
+// get the top of the stack
+HistoryTree.prototype.getCurrentCheckpoint = function(){
+  var self = this
+  var stack = self._stack
+  return stack[stack.length-1]
 }
 
 // commit one child checkpoint
@@ -27,12 +37,8 @@ HistoryTree.prototype.commit = function(cb){
   var self = this
   var currentCheckpoint = self._stack.pop()
   if (currentCheckpoint) {
-    async.series([
-      // fully commit child checkpoint
-      currentCheckpoint.commitAll.bind(currentCheckpoint),
-      // async emit related events
-      self._emitEventsFor.bind(self, 'commit', currentCheckpoint),
-    ], cb)
+    // fully commit child checkpoint
+    currentCheckpoint.commitAll(cb)
   } else {
     cb(new Error('Committed without a checkpoint.'))
   }
@@ -43,12 +49,8 @@ HistoryTree.prototype.revert = function(cb){
   var self = this
   var currentCheckpoint = self._stack.pop()
   if (currentCheckpoint) {
-    async.series([
-      // fully revert child checkpoint
-      currentCheckpoint.revertAll.bind(currentCheckpoint),
-      // async emit related events
-      self._emitEventsFor.bind(self, 'revert', currentCheckpoint),
-    ], cb)
+    // fully revert child checkpoint
+    currentCheckpoint.revertAll(cb)
   } else {
     cb(new Error('Reverted without a checkpoint.'))
   }
@@ -57,37 +59,27 @@ HistoryTree.prototype.revert = function(cb){
 // commit all child checkpoints
 HistoryTree.prototype.commitAll = function(cb){
   var self = this
-  async.eachSeries(self._stack, function(child, cb){
-    self.commit(cb)
-  }, cb)
+  
+  var commitAll = function(cb){
+    async.eachSeries(self._stack, function(child, cb){ self.commit(cb) }, cb)
+  }
+
+  async.series([
+    commitAll,
+    self.emit.bind(self, 'commit', undefined),
+  ], cb)
 }
 
 // revert all child checkpoints
 HistoryTree.prototype.revertAll = function(cb){
   var self = this
-  async.eachSeries(self._stack, function(child, cb){
-    self.revert(cb)
-  }, cb)
-}
+  
+  var revertAll = function(cb){
+    async.eachSeries(self._stack, function(child, cb){ self.revert(cb) }, cb)
+  }
 
-// private
-
-// emit event on async ee, then check if resolved
-HistoryTree.prototype._emitEventsFor = function(event, data, cb){
-  var self = this
   async.series([
-    self.emit.bind(self, event, data),
-    self._checkIfResolved.bind(self),
+    revertAll,
+    self.emit.bind(self, 'revert', undefined),
   ], cb)
 }
-
-// check for remaining child checkpoints, if none emit 'resolve'
-HistoryTree.prototype._checkIfResolved = function(cb){
-  var self = this
-  if (self._stack.length === 0) {
-    self.emit('resolve', null, cb)
-  } else {
-    cb
-  }
-}
-

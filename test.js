@@ -4,7 +4,7 @@ const HistoryTree = require('./index.js')
 
 
 test('flat commit', function(t){
-  t.plan(3)
+  t.plan(4)
 
   var history = new HistoryTree()
   history.checkpoint()
@@ -13,90 +13,111 @@ test('flat commit', function(t){
   async.series([
     history.commit.bind(history),
   ], function(){
-    t.equal(tracker.didCommit, 1, 'committed correct number of times')
-    t.equal(tracker.didRevert, 0, 'reverted correct number of times')
-    t.equal(tracker.didResolve, 1, 'resolved correct number of times')
+    t.equal(tracker.commit, 0, 'committed correct number of times')
+    t.equal(tracker.childCommit, 1, 'child committed correct number of times')
+    t.equal(tracker.revert, 0, 'reverted correct number of times')
+    t.equal(tracker.childRevert, 0, 'child reverted correct number of times')
+    t.end()
+  })
+
+})
+
+test('partial resolve', function(t){
+  t.plan(4)
+
+  var history = new HistoryTree()
+  history.checkpoint()
+  history.checkpoint()
+  var tracker = trackHistory(history)
+
+  async.series([
+    history.commit.bind(history),
+  ], function(){
+    t.equal(tracker.commit, 0, 'committed correct number of times')
+    t.equal(tracker.childCommit, 1, 'child committed correct number of times')
+    t.equal(tracker.revert, 0, 'reverted correct number of times')
+    t.equal(tracker.childRevert, 0, 'child reverted correct number of times')
     t.end()
   })
 
 })
 
 test('nested commit', function(t){
-  t.plan(7)
+  t.plan(8)
 
   var parent = new HistoryTree()
   var child = parent.checkpoint()
   child.checkpoint()
-  parentTracker = trackHistory(parent)
-  childTracker = trackHistory(child)
+  var parentTracker = trackHistory(parent)
+  var childTracker = trackHistory(child)
 
   var firstToReport = null
-
-  parent.on('resolve', function(){ if (!firstToReport) firstToReport = parent })
-  child.on('resolve',  function(){ if (!firstToReport) firstToReport = child })
 
   async.series([
     parent.commit.bind(parent),
   ], function(){
-    t.ok(firstToReport === child, 'child reported as resolved first')
-    t.equal(childTracker.didCommit, 1, 'committed correct number of times')
-    t.equal(childTracker.didRevert, 0, 'reverted correct number of times')
-    t.equal(childTracker.didResolve, 1, 'resolved correct number of times')
-    t.equal(parentTracker.didCommit, 1, 'committed correct number of times')
-    t.equal(parentTracker.didRevert, 0, 'reverted correct number of times')
-    t.equal(parentTracker.didResolve, 1, 'resolved correct number of times')
+    t.equal(childTracker.commit, 1, 'child - committed correct number of times')
+    t.equal(childTracker.childCommit, 1, 'child - child committed correct number of times')
+    t.equal(childTracker.revert, 0, 'child - reverted correct number of times')
+    t.equal(childTracker.childRevert, 0, 'child - child reverted correct number of times')
+    t.equal(parentTracker.commit, 0, 'parent - committed correct number of times')
+    t.equal(parentTracker.childCommit, 1, 'parent - child committed correct number of times')
+    t.equal(parentTracker.revert, 0, 'parent - reverted correct number of times')
+    t.equal(parentTracker.childRevert, 0, 'parent - child reverted correct number of times')
     t.end()
   })
 
 })
 
 test('child revert, parent commit', function(t){
-  t.plan(6)
+  t.plan(8)
 
   var parent = new HistoryTree()
   var child = parent.checkpoint()
   child.checkpoint()
-  parentTracker = trackHistory(parent)
-  childTracker = trackHistory(child)
+  var parentTracker = trackHistory(parent)
+  var childTracker = trackHistory(child)
 
   async.series([
     child.revert.bind(child),
     parent.commit.bind(parent),
   ], function(){
-    t.equal(childTracker.didCommit, 0, 'committed correct number of times')
-    t.equal(childTracker.didRevert, 1, 'reverted correct number of times')
-    t.equal(childTracker.didResolve, 1, 'resolved correct number of times')
-    t.equal(parentTracker.didCommit, 1, 'committed correct number of times')
-    t.equal(parentTracker.didRevert, 0, 'reverted correct number of times')
-    t.equal(parentTracker.didResolve, 1, 'resolved correct number of times')
+    t.equal(childTracker.commit, 1, 'child - committed correct number of times')
+    t.equal(childTracker.childCommit, 0, 'child - child committed correct number of times')
+    t.equal(childTracker.revert, 0, 'child - reverted correct number of times')
+    t.equal(childTracker.childRevert, 1, 'child - child reverted correct number of times')
+    t.equal(parentTracker.commit, 0, 'parent - committed correct number of times')
+    t.equal(parentTracker.childCommit, 1, 'parent - child committed correct number of times')
+    t.equal(parentTracker.revert, 0, 'parent - reverted correct number of times')
+    t.equal(parentTracker.childRevert, 0, 'parent - child reverted correct number of times')
     t.end()
   })
 
 })
 
-test('commits wait for callbacks', function(t){
+test('commitAll runs in correct order', function(t){
   t.plan(1)
 
-  var history = new HistoryTree()
-  history.checkpoint()
+  var parent = new HistoryTree()
+  var childA = parent.checkpoint()
+  var childA1 = childA.checkpoint()
+  var childA2 = childA.checkpoint()
+  var childB = parent.checkpoint()
+  var childB1 = childB.checkpoint()
+  var childB2 = childB.checkpoint()
 
   var events = []
-  // commit late
-  history.on('commit', function(event, cb){
-    setImmediate(function(){
-      events.push('commit')
-      cb()
-    })
-  })
-  // resolve immediately
-  history.on('resolve', function(){
-    events.push('resolve')
-  })
+  childA.on('commit', function(){ events.push('A') })
+  childA1.on('commit', function(){ events.push('A1') })
+  childA2.on('commit', function(){ events.push('A2') })
+  childB.on('commit', function(){ events.push('B') })
+  childB1.on('commit', function(){ events.push('B1') })
+  childB2.on('commit', function(){ events.push('B2') })
 
   async.series([
-    history.commit.bind(history),
+    parent.commitAll.bind(parent),
   ], function(){
-    t.equal(events.join(','), 'commit,resolve', 'correct order of events'),
+    t.equal(events.join(','), 'B2,B1,B,A2,A1,A', 'correct order of events'),
     t.end()
   })
 
@@ -104,12 +125,15 @@ test('commits wait for callbacks', function(t){
 
 function trackHistory(history){
   var tracker = {
-    didCommit: 0,
-    didRevert: 0,
-    didResolve: 0,
+    commit:       0,
+    childCommit:  0,
+    revert:       0,
+    childRevert:  0,
+    resolve:      0,
   }
-  history.on('commit', function(){ tracker.didCommit++ })
-  history.on('revert', function(){ tracker.didRevert++ })
-  history.on('resolve', function(){ tracker.didResolve++ })
+  history.on('commit',       function(){ tracker.commit++       })
+  history.on('childCommit',  function(){ tracker.childCommit++  })
+  history.on('revert',       function(){ tracker.revert++       })
+  history.on('childRevert',  function(){ tracker.childRevert++  })
   return tracker
 }
