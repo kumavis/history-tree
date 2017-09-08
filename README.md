@@ -1,5 +1,7 @@
 # history-tree
 
+[![Greenkeeper badge](https://badges.greenkeeper.io/kumavis/history-tree.svg)](https://greenkeeper.io/)
+
 Tree for tracking reverts and commits on checkpoints.
 Checkpoints can nest arbitrarily deep.
 
